@@ -93,6 +93,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   Orientation? _currentOrientation;
   final _uniqueKey = UniqueKey();
   Timer? _iosKeyboardWorkaroundTimer;
+  // Ralfs Bedienleiste wird nach fünf Sekunden automatisch ausgeblendet.
+  Timer? _topBarHideTimer;
 
   final _blockableOverlayState = BlockableOverlayState();
 
@@ -162,6 +164,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         registerSessionShortcutActions(gFFI);
         _registerMobileChatShortcut();
         registerToolbarShortcuts(context, widget.id, gFFI);
+        _showTopBarForFiveSeconds();
       }
     });
     WidgetsBinding.instance.addObserver(this);
@@ -208,6 +211,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     await gFFI.close();
     _timer?.cancel();
     _iosKeyboardWorkaroundTimer?.cancel();
+    _topBarHideTimer?.cancel();
     gFFI.dialogManager.dismissAll();
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
         overlays: SystemUiOverlay.values);
@@ -479,103 +483,194 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     });
   }
 
-  Widget _bottomWidget() => _showGestureHelp
-      ? getGestureHelp()
-      : (_showBar && gFFI.ffiModel.pi.displays.isNotEmpty
-          ? getBottomAppBar()
-          : Offstage());
+  void _showTopBarForFiveSeconds() {
+    _topBarHideTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _showBar = true);
+    _topBarHideTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _showBar = false);
+    });
+  }
+
+  Widget _monitorButton(String label, int display) {
+    final pi = gFFI.ffiModel.pi;
+    final available = display == kAllDisplayValue
+        ? pi.displays.length > 1 && pi.isSupportMultiDisplay
+        : display >= 0 && display < pi.displays.length;
+    final privacyMode = PrivacyModeState.find(widget.id);
+    final permitted = privacyMode.isEmpty ||
+        allowDisplaySwitchInPrivacyMode(pi, privacyMode.value);
+    final active = pi.currentDisplay == display;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: TextButton(
+        onPressed: available && permitted
+            ? () {
+                if (!active) {
+                  // Vorhandene RustDesk-Umschaltung, auch für "Beide" (-1).
+                  openMonitorInTheSameTab(display, gFFI, pi);
+                }
+                _showTopBarForFiveSeconds();
+              }
+            : null,
+        style: TextButton.styleFrom(
+          foregroundColor: active ? MyTheme.accent : Colors.white,
+          backgroundColor: active ? Colors.white : Colors.transparent,
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+        ),
+        child: Text(label),
+      ),
+    );
+  }
+
+  Widget _topRemoteBar() {
+    return Material(
+      color: MyTheme.accent,
+      child: SizedBox(
+        height: 54,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+                _monitorButton('Monitor 1', 0),
+                _monitorButton('Monitor 2', 1),
+                _monitorButton('Beide', kAllDisplayValue),
+          IconButton(
+            tooltip: 'Tastatur',
+            color: Colors.white,
+            icon: const Icon(Icons.keyboard),
+            onPressed: () {
+              openKeyboard();
+              _showTopBarForFiveSeconds();
+            },
+          ),
+          IconButton(
+            tooltip: 'Textchat',
+            color: Colors.white,
+            icon: const Icon(Icons.message),
+            onPressed: () {
+              onPressedTextChat(widget.id);
+              _showTopBarForFiveSeconds();
+            },
+          ),
+          IconButton(
+            tooltip: 'Chat und Sprachanruf',
+            color: Colors.white,
+            icon: const Icon(Icons.headset_mic),
+            onPressed: () {
+              showChatOptions(widget.id);
+              _showTopBarForFiveSeconds();
+            },
+          ),
+          IconButton(
+            tooltip: 'Touchmodus umschalten',
+            color: Colors.white,
+            icon: Icon(gFFI.ffiModel.touchMode
+                ? Icons.touch_app
+                : Icons.mouse),
+            onPressed: () {
+              gFFI.ffiModel.toggleTouchMode();
+              bind.mainSetLocalOption(
+                  key: kOptionTouchMode,
+                  value: gFFI.ffiModel.touchMode ? 'Y' : 'N');
+              _showTopBarForFiveSeconds();
+            },
+          ),
+          IconButton(
+            tooltip: 'Weitere RustDesk-Funktionen',
+            color: Colors.white,
+            icon: const Icon(Icons.more_vert),
+            onPressed: () {
+              _showTopBarForFiveSeconds();
+              showActions(widget.id);
+            },
+          ),
+          IconButton(
+            tooltip: 'Verbindung trennen',
+            color: Colors.white,
+            icon: const Icon(Icons.close),
+            onPressed: () => clientClose(sessionId, gFFI),
+          ),
+          ]),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final keyboardIsVisible =
-        keyboardVisibilityController.isVisible && _showEdit;
-    final showActionButton = !_showBar || keyboardIsVisible || _showGestureHelp;
-
     return WillPopScope(
       onWillPop: () async {
         clientClose(sessionId, gFFI);
         return false;
       },
       child: Scaffold(
-          // workaround for https://github.com/rustdesk/rustdesk/issues/3131
-          floatingActionButtonLocation: keyboardIsVisible
-              ? FABLocation(FloatingActionButtonLocation.endFloat, 0, -35)
+          // Die Windows-Taskleiste unten bleibt frei.
+          // Oben wird die Leiste nach fünf Sekunden automatisch ausgeblendet.
+          appBar: !isWebDesktop && _showBar
+              ? PreferredSize(
+                  preferredSize: const Size.fromHeight(54),
+                  child: Obx(() {
+                    gFFI.ffiModel.pi.isSet.value;
+                    return _topRemoteBar();
+                  }),
+                )
               : null,
-          floatingActionButton: !showActionButton
+          // Ein kleiner Knopf oben zeigt die Leiste nach dem Ausblenden erneut.
+          floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
+          floatingActionButton: isWebDesktop || _showBar
               ? null
               : FloatingActionButton(
-                  mini: !keyboardIsVisible,
-                  child: Icon(
-                    (keyboardIsVisible || _showGestureHelp)
-                        ? Icons.expand_more
-                        : Icons.expand_less,
-                    color: Colors.white,
-                  ),
+                  mini: true,
                   backgroundColor: MyTheme.accent,
-                  onPressed: () {
-                    setState(() {
-                      if (keyboardIsVisible) {
-                        _showEdit = false;
-                        gFFI.invokeMethod("enable_soft_keyboard", false);
-                        _mobileFocusNode.unfocus();
-                        _physicalFocusNode.requestFocus();
-                      } else if (_showGestureHelp) {
-                        _showGestureHelp = false;
-                      } else {
-                        _showBar = !_showBar;
-                      }
-                    });
-                  }),
-          bottomNavigationBar: Obx(() => Stack(
-                alignment: Alignment.bottomCenter,
-                children: [
-                  gFFI.ffiModel.pi.isSet.isTrue &&
-                          gFFI.ffiModel.waitForFirstImage.isTrue
-                      ? emptyOverlay(MyTheme.canvasColor)
-                      : () {
-                          gFFI.ffiModel.tryShowAndroidActionsOverlay();
-                          return Offstage();
-                        }(),
-                  _bottomWidget(),
-                  gFFI.ffiModel.pi.isSet.isFalse
-                      ? emptyOverlay(MyTheme.canvasColor)
-                      : Offstage(),
-                ],
-              )),
+                  tooltip: 'Monitorleiste einblenden',
+                  onPressed: _showTopBarForFiveSeconds,
+                  child: const Icon(Icons.keyboard_arrow_down,
+                      color: Colors.white),
+                ),
           body: Obx(
-            () => getRawPointerAndKeyBody(Overlay(
-              initialEntries: [
-                OverlayEntry(builder: (context) {
-                  return Container(
-                    color: kColorCanvas,
-                    child: isWebDesktop
-                        ? getBodyForDesktopWithListener()
-                        : SafeArea(
-                            child:
-                                OrientationBuilder(builder: (ctx, orientation) {
-                              if (_currentOrientation != orientation) {
-                                Timer(const Duration(milliseconds: 200), () {
-                                  gFFI.dialogManager
-                                      .resetMobileActionsOverlay(ffi: gFFI);
-                                  _currentOrientation = orientation;
-                                  gFFI.canvasModel.updateViewStyle();
-                                });
-                              }
-                              return Container(
-                                color: MyTheme.canvasColor,
-                                child: inputModel.isPhysicalMouse.value
-                                    ? getBodyForMobile()
-                                    : RawTouchGestureDetectorRegion(
-                                        child: getBodyForMobile(),
-                                        ffi: gFFI,
-                                      ),
-                              );
-                            }),
-                          ),
-                  );
-                })
-              ],
-            )),
+            () {
+              // Bisher Teil der unteren Leiste: Android-Actions-Overlay
+              // weiterhin initialisieren, ohne unten Platz zu belegen.
+              if (!(gFFI.ffiModel.pi.isSet.isTrue &&
+                  gFFI.ffiModel.waitForFirstImage.isTrue)) {
+                gFFI.ffiModel.tryShowAndroidActionsOverlay();
+              }
+              return getRawPointerAndKeyBody(Overlay(
+                initialEntries: [
+                  OverlayEntry(builder: (context) {
+                    return Container(
+                      color: kColorCanvas,
+                      child: isWebDesktop
+                          ? getBodyForDesktopWithListener()
+                          : SafeArea(
+                              child: OrientationBuilder(
+                                  builder: (ctx, orientation) {
+                                if (_currentOrientation != orientation) {
+                                  Timer(const Duration(milliseconds: 200), () {
+                                    gFFI.dialogManager
+                                        .resetMobileActionsOverlay(ffi: gFFI);
+                                    _currentOrientation = orientation;
+                                    gFFI.canvasModel.updateViewStyle();
+                                  });
+                                }
+                                return Container(
+                                  color: MyTheme.canvasColor,
+                                  child: inputModel.isPhysicalMouse.value
+                                      ? getBodyForMobile()
+                                      : RawTouchGestureDetectorRegion(
+                                          child: getBodyForMobile(),
+                                          ffi: gFFI,
+                                        ),
+                                );
+                              }),
+                            ),
+                    );
+                  })
+                ],
+              ));
+            },
           )),
     );
   }
@@ -698,7 +793,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     );
   }
 
-  bool get showCursorPaint =>
+  // Die zusätzliche RustDesk-Cursorzeichnung auf dem Smartphone ist aus.
+  // Eine bereits im Remote-Videobild enthaltene Cursor-Grafik ist davon
+  // unabhängig und muss ggf. hostseitig deaktiviert werden.
+  bool get showCursorPaint => isWebDesktop &&
       !gFFI.ffiModel.isPeerAndroid &&
       !gFFI.canvasModel.cursorEmbedded &&
       !gFFI.inputModel.relativeMouseMode.value;
