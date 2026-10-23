@@ -136,7 +136,7 @@ void runMainApp(bool startService) async {
   checkUpdate();
   // trigger connection status updater
   await bind.mainCheckConnectStatus();
-  if (startService) {
+  if (startService && !(isAndroid && bind.isOutgoingOnly())) {
     gFFI.serverModel.startService();
   }
   await Future.wait([gFFI.abModel.loadCache(), gFFI.groupModel.loadCache()]);

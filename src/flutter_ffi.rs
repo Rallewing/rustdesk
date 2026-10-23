@@ -2526,7 +2526,8 @@ pub fn is_incoming_only() -> SyncReturn<bool> {
 }
 
 pub fn is_outgoing_only() -> SyncReturn<bool> {
-    SyncReturn(config::is_outgoing_only())
+    // This Android variant controls PCs; it never exposes the phone as a host.
+    SyncReturn(cfg!(target_os = "android") || config::is_outgoing_only())
 }
 
 pub fn is_custom_client() -> SyncReturn<bool> {

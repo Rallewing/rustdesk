@@ -278,6 +278,10 @@ class MainActivity : FlutterActivity() {
             // make sure result will be invoked, otherwise flutter will await forever
             when (call.method) {
                 "init_service" -> {
+                    if (packageName == "de.rallewing.pcremote") {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
                     Intent(activity, MainService::class.java).also {
                         bindService(it, serviceConnection, Context.BIND_AUTO_CREATE)
                     }
