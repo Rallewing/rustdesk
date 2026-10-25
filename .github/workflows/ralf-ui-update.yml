@@ -2,7 +2,7 @@ name: Ralf PC Remote Taskleisten-Update
 on:
   workflow_dispatch:
   push:
-    branches: [master]
+    branches: [master, ralf/taskbar-button]
     paths:
       - 'flutter/lib/mobile/pages/remote_page.dart'
       - 'tools/taskbar/**'
