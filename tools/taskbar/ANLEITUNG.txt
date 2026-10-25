@@ -1,0 +1,18 @@
+Ralf PC Remote - Taskleisten-Button
+
+1. Den gesamten ZIP-Inhalt auf dem Windows-PC entpacken.
+2. Taskleisten-Helfer-starten.cmd doppelklicken. Er verwendet das vorhandene Python 3.13.
+3. Das Fenster muss geoeffnet bleiben; du kannst es minimieren.
+4. Im Helfer kannst du die Umschaltung direkt am PC testen.
+5. In der neuen Handy-App oben neben der Monitorwahl auf Taskleiste tippen.
+   Ein Tipp blendet die Taskleiste dauerhaft ein, der naechste aktiviert das automatische Ausblenden.
+   Beim Ausblenden wird der PC-Mauszeiger vom Rand in die Bildschirmmitte bewegt.
+6. Programme und deren X-Schaltflaeche bleiben per Touch bedienbar.
+7. Zum Beenden im Helfer auf Beenden klicken. Er stellt die vorherige Taskleisten-Einstellung wieder her.
+
+Der Helfer oeffnet keinen Netzwerk-Port und benoetigt keine Administratorrechte.
+Die Handy-App sendet Strg+Alt+Umschalt+F11 ueber die bestehende RustDesk-Verbindung.
+Ohne laufenden Helfer ist der neue Taskleisten-Button nicht wirksam.
+Bei mehreren Monitoren wird die Windows-Einstellung fuer die Taskleisten gemeinsam umgeschaltet.
+Windows-Animationen und Vollbildprogramme koennen beeinflussen, wann die Taskleiste sichtbar wird.
+APK und Helfer muessen noch gemeinsam auf dem Windows-PC und Samsung praktisch getestet werden.

@@ -536,6 +536,27 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                 _monitorButton('Monitor 1', 0),
                 _monitorButton('Monitor 2', 1),
                 _monitorButton('Beide', kAllDisplayValue),
+          TextButton.icon(
+            onPressed: gFFI.ffiModel.pi.platform == kPeerPlatformWindows &&
+                    inputModel.keyboardPerm && !inputModel.isViewOnly
+                ? () async {
+                    _showTopBarForFiveSeconds();
+                    await bind.sessionInputKey(
+                      sessionId: sessionId,
+                      name: 'VK_F11',
+                      down: false,
+                      press: true,
+                      alt: true,
+                      ctrl: true,
+                      shift: true,
+                      command: false,
+                    );
+                  }
+                : null,
+            style: TextButton.styleFrom(foregroundColor: Colors.white),
+            icon: const Icon(Icons.view_stream_outlined),
+            label: const Text('Taskleiste'),
+          ),
           IconButton(
             tooltip: 'Tastatur',
             color: Colors.white,
