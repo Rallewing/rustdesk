@@ -1,13 +1,6 @@
 name: Ralf PC Remote APK
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - 'flutter/**'
-      - 'src/flutter_ffi.rs'
-      - 'scripts/check_pc_client_manifest.py'
-      - '.github/workflows/ralf-android.yml'
 permissions:
   contents: read
 concurrency:

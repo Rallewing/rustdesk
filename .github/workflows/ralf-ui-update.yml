@@ -1,0 +1,89 @@
+name: Ralf PC Remote Taskleisten-Update
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'flutter/lib/mobile/pages/remote_page.dart'
+      - 'tools/taskbar/**'
+      - '.github/workflows/ralf-ui-update.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ralf-ui-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Verify unchanged native source before reusing tested ARM64 library
+        run: |
+          git diff --exit-code 04d99ede7529f75ff6f976b616252636e19d0043 HEAD -- src libs Cargo.toml Cargo.lock build.rs flutter/pubspec.yaml flutter/pubspec.lock
+          python3 -m unittest discover -s tools/taskbar -v
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+          flutter-version: '3.24.5'
+          cache: true
+      - name: Apply upstream Flutter patch
+        run: |
+          cd $(dirname $(dirname $(which flutter)))
+          git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
+      - uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779
+        id: ndk
+        with:
+          ndk-version: r28c
+          add-to-path: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: bridge-artifact
+          run-id: 39919093206
+          github-token: ${{ github.token }}
+          path: ./
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: librustdesk.so.aarch64-linux-android
+          run-id: 39919093206
+          github-token: ${{ github.token }}
+          path: flutter/android/app/src/main/jniLibs/arm64-v8a
+      - name: Assemble updated Android UI
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          cp "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" flutter/android/app/src/main/jniLibs/arm64-v8a/
+          mv flutter/android/app/src/main/jniLibs/arm64-v8a/liblibrustdesk.so flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so
+          sed -i 's/signingConfigs.release/signingConfigs.debug/g' flutter/android/app/build.gradle
+          sed -i 's/org.gradle.jvmargs=-Xmx1024M/org.gradle.jvmargs=-Xmx3g/g' flutter/android/gradle.properties
+          cd flutter
+          flutter build apk --release --build-name 1.5.1-ralf.3 --build-number 15103 --target-platform android-arm64 --split-per-abi
+      - name: Check final APK permissions and package PC helper
+        run: |
+          mkdir -p output
+          cp flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk output/Ralf-PC-Remote-Build.apk
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$AAPT" dump xmltree output/Ralf-PC-Remote-Build.apk AndroidManifest.xml > /tmp/manifest.txt
+          python3 scripts/check_pc_client_manifest.py /tmp/manifest.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          with ZipFile('output/Ralf-Taskleisten-Helfer.zip', 'w', ZIP_DEFLATED) as z:
+              for name in ['taskbar_helper.py', 'Taskleisten-Helfer-starten.cmd', 'ANLEITUNG.txt']:
+                  z.write(Path('tools/taskbar') / name, name)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: Ralf-PC-Remote-Taskleiste-ARM64
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
